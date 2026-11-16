@@ -1,0 +1,26 @@
+# hello-tee app config — deploy with `enclava deploy` from this directory.
+# The app name must be unique in your org; change it before deploying.
+[app]
+name = "hello-tee"
+port = 8080
+command = ["python3", "/app/server.py"]
+
+# Stateless: no encrypted data volume. Omitting [storage] entirely would
+# default to paths = ["/data"] — set paths = [] explicitly instead.
+[storage]
+paths = []
+size = "1Gi"
+tls_size = "1Gi"
+
+# First deploy MUST be password mode (auto is rejected before a first claim).
+[unlock]
+mode = "password"
+
+[resources]
+cpu = "0.5"
+memory = "512Mi"
+
+[health]
+path = "/health"
+interval = 30
+timeout = 5

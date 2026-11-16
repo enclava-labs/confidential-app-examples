@@ -1,0 +1,53 @@
+name: verify attested-rng
+
+# Independently appraises a deployed attested-rng origin: fresh nonce-bound
+# SEV-SNP proof bundle vs the trust policy committed in this repo.
+#
+# Dispatch-only until you (a) deploy your own instance and (b) author +
+# commit attested-rng/trust-policy.json per the README walkthrough — then add:
+#   schedule:
+#     - cron: "23 3 * * *"
+# A verification that can't fail proves nothing: keep the policy pinned and
+# the job gating.
+
+on:
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: "Origin to verify, e.g. https://attested-rng.<org>.dev.enclava.work"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trust policy present?
+        run: |
+          test -f attested-rng/trust-policy.json || {
+            echo "::error::attested-rng/trust-policy.json is missing."
+            echo "Author it per attested-rng/README.md ('Verify the service'):"
+            echo "  enclava describe <origin> --policy-skeleton, edit EVERY value against"
+            echo "  independent sources, commit the result. Do not trust the skeleton wholesale."
+            exit 1
+          }
+
+      # Pinned to the cap rev the trust-policy anchors were validated against;
+      # bump together with any policy repin.
+      - name: Install enclava CLI (pinned rev)
+        run: cargo install --git https://github.com/enclava-labs/cap --rev 9d86d59f22b44e702c5e8997cf7c73e22f475d9e enclava-cli --locked
+
+      # Some enclava environments issue tenant TLS from the Let's Encrypt
+      # staging directory; pinned here as trust anchors so verification fails
+      # only on real evidence, not on roots missing from public stores.
+      - name: Trust the Let's Encrypt staging roots (if this origin uses them)
+        run: |
+          sudo cp attested-rng/certs/le-staging-roots.pem /usr/local/share/ca-certificates/le-staging-roots.crt
+          sudo update-ca-certificates
+
+      - name: Verify (proof bundle + policy appraisal)
+        run: enclava verify "${{ inputs.origin }}" --policy attested-rng/trust-policy.json --json

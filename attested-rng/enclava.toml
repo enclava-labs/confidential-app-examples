@@ -1,0 +1,26 @@
+# attested-rng app config — deploy with `enclava deploy` from this directory.
+# The app name must be unique in your org; change it before deploying.
+[app]
+name = "attested-rng"
+port = 8080
+command = ["python3", "/app/server.py"]
+
+# The draw log persists across restarts on an encrypted (LUKS) volume that the
+# platform cannot read. Each storage path must be a VOLUME in the image.
+[storage]
+paths = ["/app/data"]
+size = "1Gi"
+tls_size = "1Gi"
+
+# First deploy MUST be password mode (auto is rejected before a first claim).
+[unlock]
+mode = "password"
+
+[resources]
+cpu = "0.5"
+memory = "512Mi"
+
+[health]
+path = "/health"
+interval = 30
+timeout = 5

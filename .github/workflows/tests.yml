@@ -1,0 +1,27 @@
+name: tests
+
+# Unit tests for every example app — no sidecar, no cluster needed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [hello-tee, attested-rng]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run ${{ matrix.app }} tests
+        run: |
+          cd ${{ matrix.app }}
+          python3 -m unittest discover -p 'test_*.py' -v

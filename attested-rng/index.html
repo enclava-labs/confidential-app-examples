@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>attested-rng · provably fresh randomness from a confidential VM</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: radial-gradient(1200px 600px at 80% -10%, #1e293b, #0f172a 60%); color: #e2e8f0; min-height: 100vh; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+  h1 { font-size: 1.8rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .tag { color: #94a3b8; font-size: .95rem; }
+  .lede { color: #cbd5e1; line-height: 1.6; margin: 1.25rem 0 2rem; max-width: 72ch; }
+  .card { background: rgba(30,41,59,.55); border: 1px solid rgba(148,163,184,.18);
+          border-radius: 14px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
+  .card h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: #7dd3fc; margin: 0 0 .75rem; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: .35rem .9rem; }
+  dt { color: #94a3b8; font-size: .85rem; }
+  dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; word-break: break-all; }
+  .pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .75rem; }
+  .ok { background: rgba(34,197,94,.15); color: #4ade80; border: 1px solid rgba(34,197,94,.3); }
+  .no { background: rgba(239,68,68,.12); color: #f87171; border: 1px solid rgba(239,68,68,.3); }
+  .warn { background: rgba(234,179,8,.12); color: #fbbf24; border: 1px solid rgba(234,179,8,.3); }
+  code { background: rgba(148,163,184,.12); padding: .1rem .35rem; border-radius: 4px; font-family: ui-monospace, monospace; }
+  pre { background: #020617; border: 1px solid rgba(148,163,184,.15); border-radius: 12px;
+        padding: 1rem; overflow: auto; font-size: .78rem; margin: .75rem 0 0; white-space: pre-wrap; word-break: break-all; }
+  .nums { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0 0; }
+  .ball { width: 3.4rem; height: 3.4rem; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+          font-size: 1.35rem; font-weight: 700; background: rgba(125,211,252,.12); border: 1px solid rgba(125,211,252,.35); color: #e0f2fe; }
+  input[type=text], input[type=number] { background: #020617; color: #e2e8f0; border: 1px solid rgba(148,163,184,.3);
+          border-radius: 8px; padding: .5rem .6rem; font-family: ui-monospace, monospace; font-size: .85rem; width: 100%; }
+  label { display: block; font-size: .8rem; color: #94a3b8; margin-bottom: .3rem; }
+  .row { display: grid; gap: 1rem; grid-template-columns: 2fr 1fr; margin-bottom: 1rem; }
+  button { background: #0ea5e9; border: none; color: #04202e; font-weight: 700; border-radius: 10px;
+           padding: .7rem 1.4rem; font-size: 1rem; cursor: pointer; }
+  button:hover { background: #38bdf8; }
+  button.ghost { background: rgba(148,163,184,.15); color: #e2e8f0; font-weight: 500; font-size: .85rem; padding: .45rem .9rem; }
+  footer { margin-top: 2.5rem; color: #64748b; font-size: .82rem; line-height: 1.6; }
+  footer code, a { color: #7dd3fc; }
+  .status { font-size: .85rem; margin-top: .5rem; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎲 attested-rng</h1>
+  <div class="tag">Numbers drawn inside an AMD SEV-SNP confidential VM — bound to a nonce you chose</div>
+  <p class="lede">
+    Your browser generates a fresh 32-byte nonce for every draw. The draw's transcript folds
+    that nonce in, so the response is bound to a value only you know — a replayed or
+    prefabricated draw can't match it. You can recompute the numbers from the transcript
+    right here (button below), and you can verify <em>where</em> they were computed with
+    <code>enclava verify</code> (bottom of the page).
+  </p>
+
+  <div class="card" id="drawcard">
+    <h2>Draw</h2>
+    <div class="row">
+      <div><label for="nonce">your nonce (base64url, 32 bytes — regenerate or paste your own)</label>
+        <input type="text" id="nonce" spellcheck="false"></div>
+      <div><label for="count">how many numbers (1–64)</label>
+        <input type="number" id="count" min="1" max="64" value="6"></div>
+    </div>
+    <button id="go">Draw</button>
+    <button class="ghost" id="re nonce">↻ new nonce</button>
+    <div class="nums" id="nums"></div>
+    <div class="status" id="status"></div>
+    <pre id="detail" hidden></pre>
+    <div style="margin-top:.75rem"><button class="ghost" id="check">✓ recompute locally from transcript</button></div>
+  </div>
+
+  <div class="grid" id="cards"></div>
+
+  <div class="card" style="margin-top:1rem">
+    <h2>Recent draws (public log)</h2>
+    <div class="status" id="logstatus"></div>
+    <pre id="log" hidden></pre>
+  </div>
+
+  <footer>
+    <strong>What this proves — and what it doesn't.</strong>
+    Attested: the draw ran inside a hardware-isolated SEV-SNP guest, under the pinned image
+    and signed policy, with memory the host cannot read; your nonce makes it fresh.
+    <em>Not</em> attested: information-theoretic randomness — the entropy source is the
+    guest kernel's CSPRNG, and you are trusting the code the policy pins (read it: this
+    repo). State continuity is the draw-log chain above; the platform does not by itself
+    prevent volume rollback. This page is a claim; the proof is:
+    <code id="vcmd"></code> — with a trust policy <em>you</em> hold (this app's README walks
+    authoring one). <a href="https://docs.enclava.dev">Developer docs</a>.
+  </footer>
+</div>
+<script>
+const P = __PAYLOAD__;
+const $ = id => document.getElementById(id);
+
+// client nonce: crypto.getRandomValues, base64url, unpadded — same discipline
+// as the platform's proof-bundle nonce (exactly 32 bytes).
+function newNonce() {
+  const b = new Uint8Array(32);
+  crypto.getRandomValues(b);
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function setStatus(t, cls) { $("status").innerHTML = `<span class="pill ${cls}">${t}</span>`; }
+let last = null;
+
+async function draw() {
+  const nonce = $("nonce").value.trim();
+  const count = parseInt($("count").value, 10);
+  if (!nonce) { setStatus("generate a nonce first", "no"); return; }
+  try {
+    const r = await fetch(`/draw?nonce=${encodeURIComponent(nonce)}&count=${count}`, {cache: "no-store"});
+    const j = await r.json();
+    if (!r.ok) { setStatus(`rejected: ${j.error}`, "no"); return; }
+    last = j;
+    $("nums").innerHTML = j.numbers.map(n => `<div class="ball">${n}</div>`).join("");
+    $("detail").hidden = false;
+    $("detail").textContent =
+      `draw_id: ${j.draw_id}   mode: ${j.mode}\n` +
+      `numbers: ${j.numbers.join(", ")}\n` +
+      `transcript: ${j.transcript}\n` +
+      `chain_head: ${j.chain_head ?? "(ephemeral)"}\n` +
+      `derivation: ${j.derivation}`;
+    setStatus(`draw #${j.draw_id} ok${j.mode === "ephemeral" ? " — ephemeral (no encrypted volume mounted)" : ""}`,
+              j.mode === "ephemeral" ? "warn" : "ok");
+    refreshLog();
+  } catch (e) { setStatus(`fetch failed: ${e}`, "no"); }
+}
+
+// local recompute: the same sha256 chain, in the browser, no trust in the server.
+async function recompute() {
+  if (!last) { setStatus("draw something first", "no"); return; }
+  const enc = new TextEncoder();
+  const h0 = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(last.transcript)));
+  const nums = [];
+  for (let i = 0; i < last.count; i++) {
+    const h = new Uint8Array(await crypto.subtle.digest("SHA-256",
+        Uint8Array.from([...h0, ...enc.encode(String(i))])));
+    nums.push(1 + Number(new DataView(h.buffer).getBigUint64(0) % 100n));
+  }
+  const match = JSON.stringify(nums) === JSON.stringify(last.numbers);
+  setStatus(match ? "local recompute matches ✓" : "MISMATCH — server numbers do not follow the transcript", match ? "ok" : "no");
+}
+
+async function refreshLog() {
+  try {
+    const r = await fetch("/log", {cache: "no-store"});
+    const j = await r.json();
+    if (!j.draws.length) { $("logstatus").textContent = "no draws recorded yet"; return; }
+    $("log").hidden = false;
+    $("log").textContent = j.draws.map(d =>
+      `#${d.draw_id}  ${d.numbers.join(",")}  hash=${d.hash.slice(0, 16)}…  prev=${(d.prev ?? "∅").slice(0, 16)}…`
+    ).join("\n");
+    $("logstatus").textContent = "";
+  } catch (e) { $("logstatus").textContent = `log unavailable (${e})`; }
+}
+
+// sidecar claim cards (fetched server-side — the sidecar answers only inside the guest)
+const info = P.attestation_info || {}, st = P.ownership_status || {};
+const err = o => Object.keys(o).length === 1 && o._error;
+const pill = v => v === true ? '<span class="pill ok">yes</span>'
+                       : `<span class="pill no">${v === false ? "no" : "?"}</span>`;
+$("cards").innerHTML = [
+  { title: "TEE (sidecar claim)", rows: [
+    ["attestation type", info.attestation_type ?? "—"],
+    ["runtime class", info.runtime_class ?? "—"],
+    ["sidecar", err(info) ? "unreachable (local run?)" : "answered"],
+  ]},
+  { title: "Ownership", rows: [
+    ["state", st.state ?? ("unavailable" + (err(st) ? " (local run or auto mode)" : ""))],
+    ["claims verified", st.claims_verified === undefined ? "—" : pill(st.claims_verified)],
+  ]},
+  { title: "Draw log", rows: [
+    ["mode", P.chain.mode],
+    ["draws recorded", P.chain.draws],
+    ["chain head", P.chain.chain_head ?? "(ephemeral)"],
+  ]},
+].map(c => `<div class="card"><h2>${c.title}</h2><dl>${
+  c.rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")
+}</dl></div>`).join("");
+
+$("vcmd").textContent = `enclava verify ${location.origin} --policy trust-policy.json`;
+$("nonce").value = newNonce();
+$("go").onclick = draw;
+$("re nonce").onclick = () => { $("nonce").value = newNonce(); };
+$("check").onclick = recompute;
+refreshLog();
+</script>
+</body>
+</html>
