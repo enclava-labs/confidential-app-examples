@@ -17,7 +17,9 @@ tls_size = "1Gi"
 mode = "password"
 
 [resources]
-cpu = "0.5"
+# cpu=1 keeps the guest on the platform's approved 4-vCPU SNP measurement
+# (pre cap#393/#394 tuples wedge low-cpu boots at the pre-claim seed fetch).
+cpu = "1"
 memory = "512Mi"
 
 [health]
